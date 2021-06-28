@@ -710,11 +710,9 @@ main(int argc, char **argv)
   unsigned int offadjn = 0;
 
   char *payformat;
-  MD5_CTX headermd5;
-  MD5_CTX cpiomd5;
+  MD5_CTX uncompmd5;
   MD5_CTX fullmd5;
-  unsigned char headermd5res[16];
-  unsigned char cpiomd5res[16];
+  unsigned char uncompmd5res[16];
   unsigned char fullmd5res[16];
   unsigned int fullsize = 0;
 
@@ -946,7 +944,7 @@ main(int argc, char **argv)
 	  exit(1);
 	}
       rpmMD5Final(d.seq, &seqmd5);
-      rpmMD5Final(d.targetmd5, &fullmd5);
+      rpmMD5Final(d.targetmd5, &uncompmd5);
       targetcomp = CFILE_COMP_UN;
       if (paycomp == CFILE_COMP_XX)
 	paycomp = CFILE_COMP_GZ;	/* no need for better compression */
@@ -1069,12 +1067,12 @@ main(int argc, char **argv)
 	  exit(1);
 	}
     }
-  rpmMD5Init(&headermd5);
-  rpmMD5Update(&headermd5, rpmlead, 96);
-  rpmMD5Update(&headermd5, sigh->intro, 16);
-  rpmMD5Update(&headermd5, sigh->data, sigh->cnt * 16 + sigh->dcnt);
-  rpmMD5Update(&headermd5, d.h->intro, 16);
-  rpmMD5Update(&headermd5, d.h->data, d.h->cnt * 16 + d.h->dcnt);
+  rpmMD5Init(&uncompmd5);
+  rpmMD5Update(&uncompmd5, rpmlead, 96);
+  rpmMD5Update(&uncompmd5, sigh->intro, 16);
+  rpmMD5Update(&uncompmd5, sigh->data, sigh->cnt * 16 + sigh->dcnt);
+  rpmMD5Update(&uncompmd5, d.h->intro, 16);
+  rpmMD5Update(&uncompmd5, d.h->data, d.h->cnt * 16 + d.h->dcnt);
 
   rpmMD5Init(&fullmd5);
   rpmMD5Update(&fullmd5, rpmlead, 96);
@@ -1131,12 +1129,11 @@ main(int argc, char **argv)
     }
   else
     {
-	  rpmMD5Init(&cpiomd5);
 	  unsigned long cpiocount = 0;
       while ((l = newbz->read(newbz, buf, sizeof(buf))) > 0)
         {
     	  cpiocount += l;
-    	  rpmMD5Update(&cpiomd5, buf, l);
+    	  rpmMD5Update(&uncompmd5, buf, l);
     	  addtocpio(&newcpio, &newcpiolen, (unsigned char *)buf, l);
         }
       if (l < 0)
@@ -1496,11 +1493,8 @@ oaretry1:
   if (strcmp(rpmname, "-") != 0)
     close(nfd);
 
-  rpmMD5Final(headermd5res, &headermd5);
-  fprintf_md5(stderr, "header md5", headermd5res);
-
-  rpmMD5Final(cpiomd5res, &cpiomd5);
-  fprintf_md5( stderr, "cpio md5", cpiomd5res);
+  rpmMD5Final(uncompmd5res, &uncompmd5);
+  fprintf_md5(stderr, "uncomp full md5", uncompmd5res);
 
   rpmMD5Final(fullmd5res, &fullmd5);
   fprintf_md5(stderr, "full md5", fullmd5res);
@@ -1544,7 +1538,7 @@ oaretry1:
   d.seq = xmalloc(d.seql);
   memcpy(d.seq, seqmd5res, 16);
   memcpy(d.seq + 16, seq, d.seql - 16);
-  memcpy(d.targetmd5, fullmd5res, 16);
+  memcpy(d.targetmd5, uncompmd5res, 16);
   d.targetnevr = headtonevr(d.h);
   d.targetsize = fullsize;
   d.targetcomp = targetcomp;
