@@ -710,7 +710,11 @@ main(int argc, char **argv)
   unsigned int offadjn = 0;
 
   char *payformat;
+  MD5_CTX headermd5;
+  MD5_CTX cpiomd5;
   MD5_CTX fullmd5;
+  unsigned char headermd5res[16];
+  unsigned char cpiomd5res[16];
   unsigned char fullmd5res[16];
   unsigned int fullsize = 0;
 
@@ -1065,6 +1069,13 @@ main(int argc, char **argv)
 	  exit(1);
 	}
     }
+  rpmMD5Init(&headermd5);
+  rpmMD5Update(&headermd5, rpmlead, 96);
+  rpmMD5Update(&headermd5, sigh->intro, 16);
+  rpmMD5Update(&headermd5, sigh->data, sigh->cnt * 16 + sigh->dcnt);
+  rpmMD5Update(&headermd5, d.h->intro, 16);
+  rpmMD5Update(&headermd5, d.h->data, d.h->cnt * 16 + d.h->dcnt);
+
   rpmMD5Init(&fullmd5);
   rpmMD5Update(&fullmd5, rpmlead, 96);
   rpmMD5Update(&fullmd5, sigh->intro, 16);
@@ -1120,13 +1131,20 @@ main(int argc, char **argv)
     }
   else
     {
+	  rpmMD5Init(&cpiomd5);
+	  unsigned long cpiocount = 0;
       while ((l = newbz->read(newbz, buf, sizeof(buf))) > 0)
-	addtocpio(&newcpio, &newcpiolen, (unsigned char *)buf, l);
+        {
+    	  cpiocount += l;
+    	  rpmMD5Update(&cpiomd5, buf, l);
+    	  addtocpio(&newcpio, &newcpiolen, (unsigned char *)buf, l);
+        }
       if (l < 0)
 	{
 	  fprintf(stderr, "payload read failed\n");
 	  exit(1);
 	}
+      fprintf(stderr, "cpio length %lu\n", cpiocount);
     }
 
 /***************************************************************************/
@@ -1477,7 +1495,15 @@ oaretry1:
     }
   if (strcmp(rpmname, "-") != 0)
     close(nfd);
+
+  rpmMD5Final(headermd5res, &headermd5);
+  fprintf_md5(stderr, "header md5", headermd5res);
+
+  rpmMD5Final(cpiomd5res, &cpiomd5);
+  fprintf_md5( stderr, "cpio md5", cpiomd5res);
+
   rpmMD5Final(fullmd5res, &fullmd5);
+  fprintf_md5(stderr, "full md5", fullmd5res);
 
 /****************************************************************/
 

@@ -1141,7 +1141,12 @@ main(int argc, char **argv)
   unsigned int len, l;
   int bs, be;
   unsigned char buf[4096];
+  unsigned long cpiocount = 0;
+  MD5_CTX headermd5;
+  MD5_CTX cpiomd5;
   MD5_CTX wrmd5;
+  unsigned char headermd5res[16];
+  unsigned char cpiomd5res[16];
   unsigned char wrmd5res[16];
   int nofullmd5 = 0;
   FILE *ofp;
@@ -1499,6 +1504,8 @@ main(int argc, char **argv)
   cpiodata = xmalloc(l + 4);	/* extra room for padding */
 
 
+  rpmMD5Init(&headermd5);
+  rpmMD5Init(&cpiomd5);
   rpmMD5Init(&wrmd5);
   if (!strcmp(argv[optind + 1], "-"))
     ofp = stdout;
@@ -1512,6 +1519,7 @@ main(int argc, char **argv)
       fprintf(stderr, "write error\n");
       exit(1);
     }
+  rpmMD5Update(&headermd5, d.lead, d.leadl);
   if (!nofullmd5)
     rpmMD5Update(&wrmd5, d.lead, d.leadl);
   if (!d.h)
@@ -1574,6 +1582,7 @@ main(int argc, char **argv)
 	  fprintf(stderr, "write error\n");
 	  exit(1);
 	}
+      rpmMD5Update(&headermd5, d.h->intro, 16);
       rpmMD5Update(&wrmd5, d.h->intro, 16);
       strncpy((char *)d.h->dp + d.payformatoff, "cpio", 4);
       if (fwrite(d.h->data, 16 * d.h->cnt + d.h->dcnt, 1, ofp) != 1)
@@ -1581,6 +1590,7 @@ main(int argc, char **argv)
 	  fprintf(stderr, "write error\n");
 	  exit(1);
 	}
+      rpmMD5Update(&headermd5, d.h->data, 16 * d.h->cnt + d.h->dcnt);
       rpmMD5Update(&wrmd5, d.h->data, 16 * d.h->cnt + d.h->dcnt);
     }
 
@@ -1728,6 +1738,8 @@ main(int argc, char **argv)
 		  fprintf(stderr, "write error\n");
 		  exit(1);
 		}
+	      rpmMD5Update(&cpiomd5, b, l);
+	      cpiocount += l;
 	      len -= l;
 	      off += l;
 	      bs++;
@@ -1767,6 +1779,8 @@ main(int argc, char **argv)
 	      fprintf(stderr, "write error\n");
 	      exit(1);
 	    }
+	  rpmMD5Update(&cpiomd5, buf, l);
+	  cpiocount += l;
 	  len -= l;
 	}
       inn--;
@@ -1817,7 +1831,18 @@ main(int argc, char **argv)
       if (nprelink)
         fprintf(vfp, "had to call prelink %d times\n", nprelink);
     }
+
+  fprintf(stderr, "cpio length %lu\n", cpiocount);
+
+  rpmMD5Final(headermd5res, &headermd5);
+  fprintf_md5(stderr, "header md5", headermd5res);
+
+  rpmMD5Final(cpiomd5res, &cpiomd5);
+  fprintf_md5( stderr, "cpio md5", cpiomd5res);
+
   rpmMD5Final(wrmd5res, &wrmd5);
+  fprintf_md5(stderr, "full md5", wrmd5res);
+
   if (nofullmd5)
     {
       struct rpmhead *dsigh = readhead_buf(d.lead + 96, d.leadl - 96, 0);
